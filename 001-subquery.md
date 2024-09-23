@@ -1,3 +1,19 @@
+# Ecto Subquery Example
+
+Today we are going to explore how to use Ecto to perform a common SQL operation as taken from hacker rank.
+The problem can be found here: [Hacker Rank Challenges](https://www.hackerrank.com/challenges/challenges/problem)
+
+The sql query solution can be found here: [mssql-solution](https://dev.to/ranggakd/challenges-hackerrank-mssql-dop)
+
+Ensure postgres is running on your local machine & create an environment variable for your database url.
+It should look something like this: `DATABASE_URL=ecto://postgres:postgres@localhost:5432/local_db`
+
+Or you can just substitute for your db url without defining an environment variable, whatever suits you.
+
+To beign, we first create a basic setup for our database.
+You can find how to do that from this repo: [Local Ecto Setup](https://github.com/wojtekmach/mix_install_examples/blob/main/ecto_sql.exs)
+
+```elixir
 Mix.install([
   {:ecto_sql, "~> 3.10"},
   {:ecto, "~> 3.12"},
@@ -17,7 +33,11 @@ Application.put_env(:foo, Repo, show_sensitive_data_on_connection_error: true, p
 defmodule Repo do
   use Ecto.Repo, adapter: Ecto.Adapters.Postgres, otp_app: :foo
 end
+```
 
+We then create a migration to create our `hackers` and `challenges` tables.
+
+```elixir
 defmodule Migration0 do
   use Ecto.Migration
 
@@ -32,13 +52,16 @@ defmodule Migration0 do
     end
   end
 end
+```
 
+We then create our schemas for our `hackers` and `challenges`.
+
+```elixir
 defmodule Hacker do
   use Ecto.Schema
 
   schema "hackers" do
     field(:name, :string)
-
     has_many :challenges, Challenge
   end
 end
@@ -47,11 +70,14 @@ defmodule Challenge do
   use Ecto.Schema
 
   schema "challenges" do
-
     belongs_to :hacker, Hacker
   end
 end
+```
 
+We then create our main module to perform our operations.
+
+```elixir
 defmodule Main do
   import Ecto.Query, warn: false
 
@@ -109,6 +135,7 @@ defmodule Main do
     |> IO.inspect(label: "challenges")
 
 
+    # Subquery to count the number of challenges for each hacker
     challenge_counts_query =
       from h in Hacker,
         join: c in Challenge, on: h.id == c.hacker_id,
@@ -119,34 +146,48 @@ defmodule Main do
           num_challenges: count(c.id) |> over(partition_by: c.hacker_id)
         }
 
+
+    # Subquery to find the maximum number of challenges
     max_challenge_count_query =
       from cc in subquery(challenge_counts_query),
         select: max(cc.num_challenges)
 
+
+    # Subquery to find the number of hackers with duplicate challenge counts
     duplicate_query =
       from cc in subquery(challenge_counts_query),
         group_by: cc.num_challenges,
         having: count(cc.hacker_id) > 1,
         select: cc.num_challenges
 
+
+    # Final query to get the hackers with the maximum number of challenges or those with unique challenge counts
     final_query =
       from cc in subquery(challenge_counts_query),
         where: cc.num_challenges == subquery(max_challenge_count_query) or
                cc.num_challenges not in subquery(duplicate_query),
         order_by: [desc: cc.num_challenges, asc: cc.hacker_id]
 
+
+    # Execute the final query and view the results
     Repo.all(final_query)
     |> dbg()
-
-    # You will get an answer like this:
-    # [
-    #   %{name: "Alice", hacker_id: 1, num_challenges: 6},
-    #   %{name: "Charlie", hacker_id: 3, num_challenges: 6},
-    #   %{name: "Bob", hacker_id: 2, num_challenges: 2}
-    # ]
-    # (Note: Your individual answer may vary becasue of Enum.random())
 
   end
 end
 
 Main.main()
+```
+
+You will get an answer like this:
+
+```elixir
+[
+  %{name: "Alice", hacker_id: 1, num_challenges: 6},
+  %{name: "Charlie", hacker_id: 3, num_challenges: 6},
+  %{name: "Bob", hacker_id: 2, num_challenges: 2}
+]
+```
+
+(Note: Your individual answer may vary becasue of `Enum.random()`, but now you get a general idea of how to use subqueries in Ecto.)
+
